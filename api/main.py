@@ -26,6 +26,8 @@ try:
 except Exception as e:
     print(f"Error initializing services: {e}")
 
+from scraper.social_scraper import social_scraper
+
 # ==========================================
 # PYDANTIC VALIDATION SCHEMAS
 # ==========================================
@@ -40,6 +42,9 @@ class BudgetRequest(BaseModel):
     followers: int = Field(..., gt=0, description="Jumlah followers KOL")
     engagement_rate: float = Field(..., ge=0.0, le=100.0, description="Engagement rate KOL dalam persentase (contoh: 3.5)")
     target_reach: int = Field(..., gt=0, description="Estimasi jangkauan audiens yang ditargetkan")
+
+class AutoCampaignRequest(BaseModel):
+    keyword: str = Field(..., min_length=2, description="Nama brand atau isu yang ingin ditarik datanya untuk diproses otomatis")
 
 
 # ==========================================
@@ -101,6 +106,35 @@ def predict_budget(request: BudgetRequest):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal memprediksi budget KOL: {str(e)}")
+
+@app.post("/generate-campaign-auto")
+async def generate_campaign_auto(request: AutoCampaignRequest):
+    """
+    [PHASE 5] Auto-Scrape & Generate Campaign:
+    Menerima keyword, melakukan penarikan data opini publik di media sosial,
+    menganalisis agregat sentimennya, lalu men-generate KOL Brief yang sesuai.
+    """
+    try:
+        # 1. Scrape data menggunakan keyword (simulasi async)
+        scraped_texts = await social_scraper.scrape_by_keyword(request.keyword, limit=5)
+        
+        # 2. Gabungkan hasil scrape untuk dianalisa sebagai satu narasi publik utuh
+        combined_text = " ".join(scraped_texts)
+        
+        # 3. Sentiment Analysis
+        sentiment_result = sentiment_engine.analyze(combined_text)
+        
+        # 4. RAG Context Retrieval & SLM Generation
+        brief_result = rag_orchestrator.process_sentiment_for_brief(sentiment_result)
+        
+        return {
+            "status": "success",
+            "keyword_tracked": request.keyword,
+            "data_points_analyzed": len(scraped_texts),
+            "data": brief_result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal memproses auto campaign: {str(e)}")
 
 @app.get("/")
 def health_check():
